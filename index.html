@@ -868,6 +868,7 @@ function vTerms(){
   const bc = S.dir==="d2t" ? "q-term" : "q-def";
   return `
   <div class="between" style="margin-bottom:12px">
+    ${S.idx>0 ? `<button class="xs" data-act="prev">← 前へ</button>` : `<span></span>`}
     <span class="xs">${S.idx+1} / ${S.deck.length}</span>
     <button class="xs" data-act="reset">やめる</button></div>
   <div class="bar"><i style="width:${(S.idx/S.deck.length)*100}%"></i></div>
@@ -1047,6 +1048,8 @@ document.addEventListener("click", (ev)=>{
   }
   else if(a==="reset"){ S.deck=null; }
   else if(a==="open"){ S.opened=true; }
+  else if(a==="prev"){ if(S.idx>0){ S.idx--; const t=S.deck[S.idx];
+    delete S.res[t.id]; delete MASTERY[t.id]; saveMastery(); S.opened=true; window.scrollTo(0,0); } }
   else if(a==="grade"){ const t = S.deck[S.idx]; S.res[t.id]=v; MASTERY[t.id]=v; saveMastery();
     S.opened=false; S.idx++; window.scrollTo(0,0); }
   else if(a==="sfilter"){ S.sFilter=v; S.openTerm=null; }
