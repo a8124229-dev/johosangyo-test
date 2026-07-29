@@ -867,17 +867,28 @@ const S = {
   deck:null, idx:0, opened:false, res:{},
   essay:null, essayText:"", essayChecked:false, essayOutline:false,
   mock:null, reveal:false, sec:0, running:false, timerId:null,
-  sheetOpen:4, sFilter:"all", sLec:"all", openTerm:null, saveOK:true, weakOnly:false
+  sheetOpen:4, sFilter:"all", sLec:"all", openTerm:null, saveOK:true, weakOnly:true
 };
 
 /* 覚えた／あやしい の記録。ブラウザに保存され、次に開いても残る */
 const KEY = "jsr-mastery-v1";
+const PREFKEY = "jsr-prefs-v1";
 let MASTERY = {};
 try { MASTERY = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }
 catch(e){ MASTERY = {}; S.saveOK = false; }
 function saveMastery(){
   try { localStorage.setItem(KEY, JSON.stringify(MASTERY)); }
   catch(e){ S.saveOK = false; }
+}
+/* 出題設定（向き・書けた以外・範囲）を記憶して次回も引き継ぐ */
+const PREF_KEYS = ["dir","weakOnly","lec","examOnly","includeSkip"];
+try { const pr = JSON.parse(localStorage.getItem(PREFKEY) || "{}") || {};
+  PREF_KEYS.forEach(k => { if(pr[k] !== undefined) S[k] = pr[k]; });
+} catch(e){}
+function savePrefs(){
+  try { const o={}; PREF_KEYS.forEach(k => o[k]=S[k]);
+    localStorage.setItem(PREFKEY, JSON.stringify(o));
+  } catch(e){}
 }
 const statusOf = (id) => MASTERY[id] || "none";
 function counts(list){
@@ -955,9 +966,16 @@ function vHome(){
 }
 
 function vTerms(){
-  const p = poolQuiz();
+  const scoped = pool();           // ホームの範囲（回・テスト出る・覚えなくてよい）を反映
+  const p = poolQuiz();            // さらに「書けた以外」を反映
+  const N = Math.min(20, p.length);
+  const filtered = (S.lec!=="all") || S.examOnly || !S.includeSkip || S.weakOnly;
   if(!S.deck){
-    return `<div class="st"><p class="s">大問1</p><h2>用語20問</h2></div>
+    const chips = [];
+    if(S.lec!=="all") chips.push(`第${S.lec}回`);
+    if(S.examOnly) chips.push("テスト出るのみ");
+    if(S.weakOnly) chips.push("書けた以外");
+    return `<div class="st"><p class="s">大問1</p><h2>用語トレーニング</h2></div>
     <div class="card">
       <p class="sm" style="font-weight:700;margin:0 0 8px">出題の向き</p>
       <div class="chips">
@@ -967,10 +985,14 @@ function vTerms(){
       <button class="chk" style="margin-top:12px" data-act="toggle" data-v="weakOnly">
         <span class="box ${S.weakOnly?'on':''}">${S.weakOnly?'✓':''}</span>
         <span class="sm">「書けた」以外だけ出す</span></button>
-      <p class="xs" style="margin:8px 0 0">出題対象は${p.length}語。ここから20問をランダムに出します（範囲はホームで変更）。</p>
-      ${p.length===0?`<p class="xs" style="margin:8px 0 0;color:var(--marker)">条件に合う用語がありません。チェックを外すか、範囲を広げてください。</p>`:""}
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+        <p class="xs" style="margin:0">収録：全${TERMS.length}語${chips.length?`　絞り込み：${chips.join("・")}`:""}</p>
+        <p class="sm" style="margin:6px 0 0;font-weight:700">この条件で出せる用語：${p.length}語${p.length>20?`（毎回20問を出題）`:``}</p>
+        ${filtered?`<button class="chip" style="margin-top:10px" data-act="widen">範囲をすべてに広げる</button>`:""}
+      </div>
+      ${p.length===0?`<p class="xs" style="margin:10px 0 0;color:var(--marker)">条件に合う用語がありません。上の絞り込みを外すか、範囲を広げてください。</p>`:""}
     </div>
-    <button class="btn" data-act="start" ${p.length?"":"disabled"}>20問はじめる</button>`;
+    <button class="btn" data-act="start" ${p.length?"":"disabled"}>${N}問はじめる</button>`;
   }
   if(S.idx >= S.deck.length){
     const ok = Object.values(S.res).filter(v=>v==="ok").length;
@@ -981,7 +1003,7 @@ function vTerms(){
       <span class="xs" style="margin-left:8px">第${m.l}回</span><p class="xs" style="margin:2px 0 0">${esc(m.d)}</p></div>`).join("")}
     </div>`:""}
     <div class="flexrow">
-      <button class="btn" data-act="retry">${missed.length?"間違えた分だけ再挑戦":"もう一度20問"}</button>
+      <button class="btn" data-act="retry">${missed.length?"間違えた分だけ再挑戦":"もう一度出題"}</button>
       <button class="btn quiet grow0" data-act="reset">設定へ</button>
     </div>
     <button class="btn ghost" style="margin-top:8px" data-act="go" data-v="status">習得状況をみる</button>`;
@@ -1163,14 +1185,15 @@ document.addEventListener("click", (ev)=>{
   const b = ev.target.closest("[data-act]"); if(!b) return;
   const a = b.dataset.act, v = b.dataset.v;
   if(a==="go"){ S.view=v; if(v!=="essay") S.essay=null; window.scrollTo(0,0); }
-  else if(a==="lec"){ S.lec=v; }
-  else if(a==="toggle"){ S[v]=!S[v]; }
-  else if(a==="dir"){ S.dir=v; }
+  else if(a==="lec"){ S.lec=v; savePrefs(); }
+  else if(a==="toggle"){ S[v]=!S[v]; savePrefs(); }
+  else if(a==="dir"){ S.dir=v; savePrefs(); }
   else if(a==="start"||a==="retry"){
     const missed = S.deck? S.deck.filter(c=>S.res[c.id]==="ng") : [];
-    const base = (a==="retry" && missed.length) ? missed : pool();
+    const base = (a==="retry" && missed.length) ? missed : poolQuiz();
     S.deck = shuffle(base).slice(0,20); S.idx=0; S.opened=false; S.res={};
   }
+  else if(a==="widen"){ S.lec="all"; S.examOnly=false; S.includeSkip=false; S.weakOnly=false; savePrefs(); }
   else if(a==="reset"){ S.deck=null; }
   else if(a==="open"){ S.opened=true; }
   else if(a==="prev"){ if(S.idx>0){ S.idx--; const t=S.deck[S.idx];
